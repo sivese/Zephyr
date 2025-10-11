@@ -7,6 +7,7 @@ use serde_json::json;
 #[tokio::main]
 async fn main() {
     let app = Router::new()
+        .route("/test", get(test))
         .route("/", post(handler));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
@@ -16,6 +17,10 @@ async fn main() {
     axum::serve(listener, app)
         .await
         .unwrap();
+}
+
+async fn test() -> StatusCode {
+    StatusCode::OK
 }
 
 async fn handler(mut multipart: Multipart) -> Json<serde_json::Value> {
