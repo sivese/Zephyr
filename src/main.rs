@@ -1,3 +1,7 @@
+mod aws;
+mod custom;
+mod util;
+
 use axum::{
     extract::{multipart, Multipart}, http::StatusCode, response::Json, routing::{get, post}, Router
 };
