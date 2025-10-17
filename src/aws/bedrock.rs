@@ -1,4 +1,4 @@
-use aws_config::meta::region::RegionProviderChain;
+use aws_config::{meta::region::RegionProviderChain, BehaviorVersion, Region};
 use aws_sdk_bedrockruntime::{Client, primitives::Blob};
 use serde::{Deserialize, Serialize};
 use base64::{Engine as _, engine::general_purpose};
@@ -51,9 +51,10 @@ pub struct BedrockImageGenerator {
 impl BedrockImageGenerator {
     // Initialize the Bedrock client
     pub async fn new() -> Result<Self> {
-        let region_provider = RegionProviderChain::or_else(self, fallback);
-        
-        let config = aws_config::defaults()
+        let region_provider = RegionProviderChain::default_provider()
+            .or_else(Region::new("us-west-2"));
+
+        let config = aws_config::defaults(BehaviorVersion::latest())
             .region(region_provider)
             .load()
             .await;
