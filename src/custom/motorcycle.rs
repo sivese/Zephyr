@@ -66,6 +66,7 @@ impl MotorcycleCustomizer {
         let mask_path = format!("temp_mask_{:?}.png", part_type);
         rgb_mask.save(&mask_path)?;
         
+
         // 2. 프롬프트 구성
         let part_name = match part_type {
             PartType::Exhaust => "exhaust system",
@@ -155,7 +156,7 @@ async fn main() -> Result<()> {
     println!("═══════════════════════════════════════\n");
     
     let exhaust_result = customizer.visualize_custom_part(
-        "base_motorcycle.jpg",
+        "base_motorcycle.png",
         PartType::Exhaust,
         "sport bike with red and black fairings",
         "polished chrome dual slip-on exhaust with carbon fiber tips, \
@@ -163,8 +164,8 @@ async fn main() -> Result<()> {
         MaskIntensity::Medium,
     ).await?;
     
-    fs::write("custom_exhaust.png", &exhaust_result)?;
-    println!("💾 Saved: custom_exhaust.png\n");
+    fs::write("custom_exhaust.jpg", &exhaust_result)?;
+    println!("💾 Saved: custom_exhaust.jpg\n");
     
     // 예시 2: 시트 커스텀
     println!("═══════════════════════════════════════");

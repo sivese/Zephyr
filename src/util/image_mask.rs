@@ -43,9 +43,11 @@ impl MaskGenerator {
                 // 배기 파츠 영역 (우측 하단)
                 let x = (image_width as f32 * 0.5) as i32;
                 let y = (image_height as f32 * 0.65) as i32;
-                let width = (image_width as f32 * 0.35 * scale) as i32;
-                let height = (image_height as f32 * 0.25 * scale) as i32;
+                let width = (image_width as f32 * 0.35 * scale / 2.0) as i32;
+                let height = (image_height as f32 * 0.25 * scale / 2.0) as i32;
                 
+                println!("Creating exhaust mask at ({}, {}) with size ({}, {})", x, y, width, height);
+
                 draw_filled_ellipse_mut(
                     &mut mask,
                     (x, y),
@@ -101,6 +103,7 @@ impl MaskGenerator {
         let img = image::open(base_image_path)?;
         let (width, height) = img.dimensions();
         
+        println!("  🖼️  Generating mask for {:?} with {:?} intensity...", part_type, intensity);
         Self::create_part_mask(width, height, part_type, intensity)
     }
     
