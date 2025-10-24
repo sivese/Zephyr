@@ -7,10 +7,19 @@ edition = "2024"
 axum = { version = "0.8.6", features = ["multipart", "json"] }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1.0"
+
+# AWS SDK
 aws-config = "1.1.0"
 aws-sdk-bedrockruntime = "1.11.0"
+aws-sdk-s3 = "1.12"
+aws-sdk-sts = "1.12"  # AWS 자격 증명 테스트용
+aws-smithy-types = "1.1.0"
+
 serde = { version = "1.0", features = ["derive"] }
 base64 = "0.21"
 anyhow = "1.0"
 image = "0.24"
 imageproc = "0.23"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+tower-http = { version = "0.6", features = ["cors"] }
