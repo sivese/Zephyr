@@ -12,7 +12,7 @@ serde_json = "1.0"
 aws-config = "1.1.0"
 aws-sdk-bedrockruntime = "1.11.0"
 aws-sdk-s3 = "1.12"
-aws-sdk-sts = "1.12"  # AWS 자격 증명 테스트용
+aws-sdk-sts = "1.12"  # For AWS credentials testing
 aws-smithy-types = "1.1.0"
 
 serde = { version = "1.0", features = ["derive"] }

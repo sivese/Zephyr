@@ -1,10 +1,7 @@
 #[cfg(test)]
-
 mod tests {
-    use super::*;
-
     #[test]
-    fn test_api() {
-        assert_eq!(2 + 5, 4);
+    fn test_basic_math() {
+        assert_eq!(2 + 5, 7);
     }
 }

@@ -4,8 +4,10 @@ use bytes::Bytes;
 use serde_json::json;
 use tracing::info;
 
+const GEMINI_API_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
+
 pub struct GeminiClient {
-    api_key : String,
+    api_key: String,
 }
 
 impl GeminiClient {
@@ -24,9 +26,9 @@ impl GeminiClient {
         images: Vec<Bytes>
     ) -> Result<Bytes, Box<dyn std::error::Error>> {
         info!("Starting image generation with {} images", images.len());
-        
-        // 이미지들을 base64로 인코딩
-        let mut __parts__ = vec![
+
+        // Encode images to base64 and build request parts
+        let mut parts = vec![
             json!({
                 "text": prompt
             })
@@ -34,8 +36,8 @@ impl GeminiClient {
         
         for (idx, image_bytes) in images.iter().enumerate() {
             info!("Processing image {}: {} bytes", idx, image_bytes.len());
-            
-            // 이미지 타입 감지
+
+            // Detect image type from magic bytes
             let mime_type = if image_bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
                 "image/jpeg"
             } else if image_bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
@@ -52,44 +54,43 @@ impl GeminiClient {
             info!("Detected MIME type: {}", mime_type);
             
             let img_base64 = general_purpose::STANDARD.encode(&image_bytes);
-            __parts__.push(json!({
+            parts.push(json!({
                 "inline_data": {
                     "mime_type": mime_type,
                     "data": img_base64
                 }
             }));
         }
-        
+
         let body = json!({
             "contents": [{
-                "parts": __parts__
+                "parts": parts
             }]
         });
         
         info!("Sending request to Gemini API...");
-        
-        // API 호출
+
+        // Call Gemini API
         let client = reqwest::Client::new();
         let response = client
-            .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent")
+            .post(GEMINI_API_URL)
             .header("x-goog-api-key", &self.api_key)
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
             .await?;
-        
+
         let status = response.status();
         info!("Gemini API response status: {}", status);
-        
-        // 응답 텍스트를 먼저 가져오기
+
+        // Get response text first
         let response_text = response.text().await?;
-        //info!("Gemini API response length: {} bytes", response_text.len());
-        
-        // 텍스트를 JSON으로 파싱
+
+        // Parse text as JSON
         let result: serde_json::Value = serde_json::from_str(&response_text)
             .map_err(|e| format!("Failed to parse JSON."))?;
-        
-        // 에러 체크
+
+        // Check for errors in response
         if let Some(error) = result.get("error") {
             let error_message = error.get("message")
                 .and_then(|m| m.as_str())
@@ -102,13 +103,13 @@ impl GeminiClient {
 
             return Err(format!("Gemini API error ({}): {}", error_code, error_message).into());
         }
-        
-        // 생성된 이미지 추출
+
+        // Extract generated image from response
         let parts = result["candidates"][0]["content"]["parts"].as_array()
             .ok_or("Failed to get parts array")?;
 
         for part in parts {
-            // inlineData로 변경!
+            // Check for inline data in response
             if let Some(data) = part["inlineData"]["data"].as_str() {
                 info!("Successfully extracted image data");
                 let decoded = general_purpose::STANDARD.decode(data)?;

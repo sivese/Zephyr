@@ -5,6 +5,14 @@ use base64::{Engine as _, engine::general_purpose};
 use anyhow::Result;
 use std::fs;
 
+// Configuration constants
+const DEFAULT_REGION: &str = "us-west-2";
+const MODEL_ID: &str = "stability.stable-diffusion-xl-v1";
+const DEFAULT_CFG_SCALE: f32 = 7.0;
+const INPAINT_CFG_SCALE: f32 = 8.0;
+const DEFAULT_STEPS: u32 = 50;
+const STYLE_PRESET: &str = "photographic";
+
 // Stable Diffusion XL request structure
 #[derive(Serialize, Debug)]
 struct StableDiffusionRequest {
@@ -52,7 +60,7 @@ impl BedrockImageGenerator {
     // Initialize the Bedrock client
     pub async fn new() -> Result<Self> {
         let region_provider = RegionProviderChain::default_provider()
-            .or_else(Region::new("us-west-2"));
+            .or_else(Region::new(DEFAULT_REGION));
 
         let config = aws_config::defaults(BehaviorVersion::latest())
             .region(region_provider)
@@ -67,7 +75,7 @@ impl BedrockImageGenerator {
     // Encode image to base64
     fn encode_image(&self, image_path: &str) -> Result<String> {
         let image_data = fs::read(image_path)?;
-        Ok(general_purpose::STANDARD.encode(image_data)) // General purpose? Then, is there a special purpose?
+        Ok(general_purpose::STANDARD.encode(image_data))
     }
 
     /// Generate image from text (Text-to-Image)
@@ -95,10 +103,10 @@ impl BedrockImageGenerator {
             init_image: None,
             mask_source: None,
             mask_image: None,
-            cfg_scale: 7.0,
+            cfg_scale: DEFAULT_CFG_SCALE,
             image_strength: None,
-            steps: 50,
-            style_preset: Some("photographic".to_string()),
+            steps: DEFAULT_STEPS,
+            style_preset: Some(STYLE_PRESET.to_string()),
             seed: None,
         };
         
@@ -124,10 +132,10 @@ impl BedrockImageGenerator {
             init_image: Some(base_image),
             mask_source: None,
             mask_image: None,
-            cfg_scale: 7.0,
+            cfg_scale: DEFAULT_CFG_SCALE,
             image_strength: Some(image_strength),
-            steps: 50,
-            style_preset: Some("photographic".to_string()),
+            steps: DEFAULT_STEPS,
+            style_preset: Some(STYLE_PRESET.to_string()),
             seed: None,
         };
         
@@ -164,10 +172,10 @@ impl BedrockImageGenerator {
             init_image: Some(base_image),
             mask_source: Some("MASK_IMAGE_BLACK".to_string()),
             mask_image: Some(mask_image),
-            cfg_scale: 8.0,
+            cfg_scale: INPAINT_CFG_SCALE,
             image_strength: None,
-            steps: 50,
-            style_preset: Some("photographic".to_string()),
+            steps: DEFAULT_STEPS,
+            style_preset: Some(STYLE_PRESET.to_string()),
             seed: None,
         };
         
@@ -181,7 +189,7 @@ impl BedrockImageGenerator {
         
         let response = self.client
             .invoke_model()
-            .model_id("stability.stable-diffusion-xl-v1")
+            .model_id(MODEL_ID)
             .content_type("application/json")
             .accept("application/json")
             .body(body_blob)

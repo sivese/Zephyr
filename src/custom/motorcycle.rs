@@ -1,10 +1,11 @@
 use anyhow::Result;
 use std::fs;
+use tracing::{error, info};
 
 use crate::aws::bedrock::BedrockImageGenerator;
 use crate::util::image_mask::{MaskGenerator, PartType, MaskIntensity};
 
-/// 모터사이클 커스텀 시각화 파이프라인
+/// Motorcycle customization visualization pipeline
 pub struct MotorcycleCustomizer {
     generator: BedrockImageGenerator,
 }
@@ -52,10 +53,10 @@ impl MotorcycleCustomizer {
         part_description: &str,
         intensity: MaskIntensity,
     ) -> Result<Vec<u8>> {
-        println!("🎨 Generating custom visualization...");
-        
-        // 1. 마스크 생성
-        println!("  📍 Creating mask for {:?}...", part_type);
+        info!("Generating custom visualization...");
+
+        // 1. Generate mask for the specified part
+        info!("Creating mask for {:?}...", part_type);
         let gray_mask = MaskGenerator::generate_mask_from_image(
             base_motorcycle_path,
             part_type,
@@ -65,9 +66,8 @@ impl MotorcycleCustomizer {
         let rgb_mask = MaskGenerator::to_rgb_mask(&gray_mask);
         let mask_path = format!("temp_mask_{:?}.png", part_type);
         rgb_mask.save(&mask_path)?;
-        
 
-        // 2. 프롬프트 구성
+        // 2. Build prompt for AI generation
         let part_name = match part_type {
             PartType::Exhaust => "exhaust system",
             PartType::Seat => "seat",
@@ -83,28 +83,28 @@ impl MotorcycleCustomizer {
             bike_description, part_name, part_description
         );
         
-        let negative_prompt = 
+        let negative_prompt =
             "different motorcycle model, changed body style, \
             distorted proportions, unrealistic, blurry, low quality, \
             cartoon, 3d render, wrong bike type, illustration";
-        
-        // 3. Bedrock으로 이미지 생성
-        println!("  🚀 Generating image with Bedrock...");
+
+        // 3. Generate image with Bedrock
+        info!("Generating image with Bedrock...");
         let result = self.generator.inpaint(
             base_motorcycle_path,
             &mask_path,
             &prompt,
             Some(negative_prompt),
         ).await?;
-        
-        // 4. 임시 마스크 파일 삭제
+
+        // 4. Clean up temporary mask file
         let _ = fs::remove_file(&mask_path);
-        
-        println!("  ✅ Generation complete!");
+
+        info!("Generation complete!");
         Ok(result)
     }
 
-    // 여러 강도로 생성하여 옵션 제공
+    /// Generate multiple visualization options with different mask intensities
     pub async fn generate_options(
         &self,
         base_motorcycle_path: &str,
@@ -117,12 +117,12 @@ impl MotorcycleCustomizer {
             MaskIntensity::Medium,
             MaskIntensity::Aggressive,
         ];
-        
+
         let mut results = Vec::new();
-        
+
         for intensity in intensities {
-            println!("\n🔄 Generating with {:?} intensity...", intensity);
-            
+            info!("Generating with {:?} intensity...", intensity);
+
             match self.visualize_custom_part(
                 base_motorcycle_path,
                 part_type,
@@ -134,23 +134,23 @@ impl MotorcycleCustomizer {
                     results.push((intensity, image_data));
                 }
                 Err(e) => {
-                    eprintln!("⚠️  Failed with {:?} intensity: {}", intensity, e);
+                    error!("Failed with {:?} intensity: {}", intensity, e);
                 }
             }
         }
-        
+
         Ok(results)
     }
 }
 
 #[tokio::test]
-async fn main() -> Result<()> {
-    println!("🏍️  Motorcycle Custom Visualizer\n");
-    
-    // 초기화
+async fn test_motorcycle_customization() -> Result<()> {
+    println!("Motorcycle Custom Visualizer\n");
+
+    // Initialize customizer
     let customizer = MotorcycleCustomizer::new().await?;
-    
-    // 예시 1: 단일 배기 파츠 커스텀
+
+    // Example 1: Custom exhaust visualization
     println!("═══════════════════════════════════════");
     println!("Example 1: Custom Exhaust Visualization");
     println!("═══════════════════════════════════════\n");
@@ -165,9 +165,9 @@ async fn main() -> Result<()> {
     ).await?;
     
     fs::write("custom_exhaust.jpg", &exhaust_result)?;
-    println!("💾 Saved: custom_exhaust.jpg\n");
-    
-    // 예시 2: 시트 커스텀
+    println!("Saved: custom_exhaust.jpg\n");
+
+    // Example 2: Custom seat visualization
     println!("═══════════════════════════════════════");
     println!("Example 2: Custom Seat Visualization");
     println!("═══════════════════════════════════════\n");
@@ -182,9 +182,9 @@ async fn main() -> Result<()> {
     ).await?;
     
     fs::write("custom_seat.png", &seat_result)?;
-    println!("💾 Saved: custom_seat.png\n");
-    
-    // 예시 3: 핸들바 커스텀 (여러 옵션)
+    println!("Saved: custom_seat.png\n");
+
+    // Example 3: Handlebar customization with multiple intensity options
     println!("═══════════════════════════════════════");
     println!("Example 3: Handlebar Options (Multiple Intensities)");
     println!("═══════════════════════════════════════\n");
@@ -200,10 +200,10 @@ async fn main() -> Result<()> {
     for (intensity, image_data) in handlebar_options {
         let filename = format!("handlebar_{:?}.png", intensity);
         fs::write(&filename, &image_data)?;
-        println!("💾 Saved: {}", filename);
+        println!("Saved: {}", filename);
     }
-    
-    // 예시 4: 마이너 바이크 모델 (모델명 없이)
+
+    // Example 4: Minor bike model (using description instead of model name)
     println!("\n═══════════════════════════════════════");
     println!("Example 4: Minor Bike Model (No Model Name)");
     println!("═══════════════════════════════════════\n");
@@ -220,14 +220,14 @@ async fn main() -> Result<()> {
     ).await?;
     
     fs::write("minor_bike_custom.png", &minor_bike_result)?;
-    println!("💾 Saved: minor_bike_custom.png\n");
-    
-    println!("✨ All visualizations complete!");
-    
+    println!("Saved: minor_bike_custom.png\n");
+
+    println!("All visualizations complete!");
+
     Ok(())
 }
 
-// 실제 사용 시 CLI 인터페이스 추가 예시
+// Example CLI interface for actual usage
 #[cfg(feature = "cli")]
 mod cli {
     use super::*;
@@ -289,13 +289,13 @@ mod cli {
         ).await?;
         
         fs::write(&cli.output, &result)?;
-        println!("✅ Saved to: {}", cli.output);
-        
+        println!("Saved to: {}", cli.output);
+
         Ok(())
     }
 }
 
-// CLI 사용 예시:
+// CLI usage example:
 // cargo run --features cli -- \
 //   --base motorcycle.jpg \
 //   --part exhaust \

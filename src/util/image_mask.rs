@@ -40,7 +40,7 @@ impl MaskGenerator {
         
         match part_type {
             PartType::Exhaust => {
-                // 배기 파츠 영역 (우측 하단)
+                // Exhaust part region (bottom right)
                 let x = (image_width as f32 * 0.5) as i32;
                 let y = (image_height as f32 * 0.65) as i32;
                 let width = (image_width as f32 * 0.35 * scale / 2.0) as i32;
@@ -57,7 +57,7 @@ impl MaskGenerator {
                 );
             }
             PartType::Seat => {
-                // 시트 영역 (중앙 상단)
+                // Seat region (center top)
                 let x = (image_width as f32 * 0.5) as i32;
                 let y = (image_height as f32 * 0.45) as i32;
                 let width = (image_width as f32 * 0.15 * scale) as i32;
@@ -72,7 +72,7 @@ impl MaskGenerator {
                 );
             }
             PartType::Handlebar => {
-                // 핸들바 영역 (전면 상단)
+                // Handlebar region (front top)
                 let x = (image_width as f32 * 0.4) as i32;
                 let y = (image_height as f32 * 0.25) as i32;
                 let width = (image_width as f32 * 0.2 * scale) as i32;
@@ -102,8 +102,8 @@ impl MaskGenerator {
     ) -> Result<GrayImage> {
         let img = image::open(base_image_path)?;
         let (width, height) = img.dimensions();
-        
-        println!("  🖼️  Generating mask for {:?} with {:?} intensity...", part_type, intensity);
+
+        println!("Generating mask for {:?} with {:?} intensity...", part_type, intensity);
         Self::create_part_mask(width, height, part_type, intensity)
     }
     
@@ -120,7 +120,7 @@ impl MaskGenerator {
         rgb_mask
     }
 
-    // Gernerate a custom elliptical mask
+    /// Generate a custom elliptical mask
     pub fn create_custom_mask(
         image_width: u32,
         image_height: u32,
@@ -128,7 +128,7 @@ impl MaskGenerator {
         region_y: f32,      // 0.0 ~ 1.0
         region_width: f32,  // 0.0 ~ 1.0
         region_height: f32, // 0.0 ~ 1.0
-        feather_radius: f32, // 블러 강도
+        feather_radius: f32, // Blur strength
     ) -> Result<GrayImage> {
         let mut mask = GrayImage::new(image_width, image_height);
         
