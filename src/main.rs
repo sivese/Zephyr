@@ -2,7 +2,9 @@ mod aws;
 mod gemini;
 mod custom;
 mod util;
+mod meshy;
 
+use aws_config::imds::client;
 use axum::{
     extract::{ConnectInfo, Multipart, Request, State},
     http::{header, StatusCode},
@@ -22,6 +24,7 @@ use serde_json::json;
 use dotenv::dotenv;
 
 use crate::gemini::client::GeminiClient;
+use crate::meshy::client::MeshyClient;
 
 #[tokio::main]
 async fn main() {
@@ -36,6 +39,11 @@ async fn main() {
     match std::env::var("GEMINI_API_KEY") {
         Ok(_) => info!("GEMINI_API_KEY loaded successfully"),
         Err(_) => panic!("GEMINI_API_KEY not found in environment"),
+    }
+
+    match std::env::var("MESHY_API_KEY") {
+        Ok(_) => info!("MESHY_API_KEY loaded successfully"),
+        Err(_) => panic!("MESHY_API_KEY not found in environment"),
     }
 
     let cors = CorsLayer::new()
@@ -144,6 +152,48 @@ async fn generate_image(mut multipart: Multipart) -> Result<Response, (StatusCod
     }
 }
 
+async fn generate_3d_model(mut multipart: Multipart) -> Result<Response, (StatusCode, String)> {
+    let mut images = Vec::new();
+
+    while let Some(field) = multipart.next_field().await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read field: {}", e)))? 
+    {
+        let name = field.name().unwrap_or("unknown").to_string();
+        info!("Processing field: {}", name);
+        
+        if name.starts_with("image") || name == "file" {
+            let data = field.bytes().await
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read bytes: {}", e)))?;
+            info!("Received image field '{}': {} bytes", name, data.len());
+            images.push(data);
+        }
+    }
+    
+    if images.is_empty() {
+        info!("No images received");
+        return Err((StatusCode::BAD_REQUEST, "No images provided".to_string()));
+    }
+
+    let meshy_client = MeshyClient::new();
+
+    match meshy_client.gen_3d(images).await {
+        Ok(model_data) => {
+            info!("Successfully generated 3D model: {} bytes", model_data.len());
+            
+            // 3D 모델 데이터를 반환
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/octet-stream")
+                .body(axum::body::Body::from(model_data))
+                .unwrap())
+        }
+        Err(e) => {
+            let error_msg = format!("Failed to generate 3D model: {}", e);
+            info!("{}", error_msg);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, error_msg))
+        }
+    }
+}
 
 async fn handler(mut multipart: Multipart) -> Json<serde_json::Value> {
     let response = json!({
