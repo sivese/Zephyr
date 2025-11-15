@@ -12,7 +12,7 @@ use axum::{
 
 #[derive(Debug, Serialize)]
 pub struct TaskCreatedResponse {
-    task_id: String,
+    pub(crate) task_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -64,7 +64,6 @@ impl MeshyClient {
         }
     }
     
-    // Task 생성만 하고 ID 반환
     pub async fn create_3d_task(
         &self,
         images: Vec<Bytes>
@@ -115,7 +114,6 @@ impl MeshyClient {
         Ok(task_response.result)
     }
     
-    // Task 상태 조회
     pub async fn get_task_status(
         &self,
         task_id: &str

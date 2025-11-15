@@ -4,13 +4,23 @@ mod custom;
 mod util;
 mod meshy;
 
+use base64::{Engine, engine::general_purpose};
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use reqwest::Client;
+use core::error;
+use std::time::Duration;
+use tokio::time::sleep;
+
 use aws_config::imds::client;
+
 use axum::{
-    extract::{ConnectInfo, Multipart, Request, State},
-    http::{header, StatusCode},
-    response::{IntoResponse, Json, Response},
-    routing::{get, post},
-    Router,
+    Router, 
+    extract::{ConnectInfo, Multipart, Request, Path, ws::{Message, WebSocket, WebSocketUpgrade}, State}, 
+    http::{StatusCode, header}, 
+    response::{IntoResponse, Json, Response}, 
+    routing::{get, post}
 };
 
 use tokio::fs::File;
@@ -20,11 +30,15 @@ use std::{net::SocketAddr, sync::Arc};
 use tracing::{info, Level};
 use tracing_subscriber;
 use tower_http::cors::{CorsLayer, Any};
-use serde_json::json;
 use dotenv::dotenv;
 
-use crate::gemini::client::GeminiClient;
+use crate::{gemini::client::GeminiClient, meshy::client::TaskCreatedResponse};
 use crate::meshy::client::MeshyClient;
+
+#[derive(Clone)]
+pub struct AppState {
+    meshy_client: Arc<MeshyClient>,
+}
 
 #[tokio::main]
 async fn main() {
@@ -152,45 +166,17 @@ async fn generate_image(mut multipart: Multipart) -> Result<Response, (StatusCod
     }
 }
 
-async fn generate_3d_model(mut multipart: Multipart) -> Result<Response, (StatusCode, String)> {
-    let mut images = Vec::new();
-
-    while let Some(field) = multipart.next_field().await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read field: {}", e)))? 
-    {
-        let name = field.name().unwrap_or("unknown").to_string();
-        info!("Processing field: {}", name);
-        
-        if name.starts_with("image") || name == "file" {
-            let data = field.bytes().await
-                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read bytes: {}", e)))?;
-            info!("Received image field '{}': {} bytes", name, data.len());
-            images.push(data);
-        }
-    }
+pub async fn create_3d_handler(
+    State(state): State<AppState>,
+    // 실제로는 Multipart로 이미지 받기
+) -> Result<Json<TaskCreatedResponse>, StatusCode> {
+    let images: Vec<Bytes> = vec![]; // 실제 구현 필요
     
-    if images.is_empty() {
-        info!("No images received");
-        return Err((StatusCode::BAD_REQUEST, "No images provided".to_string()));
-    }
-
-    let meshy_client = MeshyClient::new();
-
-    match meshy_client.gen_3d(images).await {
-        Ok(model_data) => {
-            info!("Successfully generated 3D model: {} bytes", model_data.len());
-            
-            // 3D 모델 데이터를 반환
-            Ok(Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "application/octet-stream")
-                .body(axum::body::Body::from(model_data))
-                .unwrap())
-        }
+    match state.meshy_client.create_3d_task(images).await {
+        Ok(task_id) => Ok(Json(TaskCreatedResponse { task_id })),
         Err(e) => {
-            let error_msg = format!("Failed to generate 3D model: {}", e);
-            info!("{}", error_msg);
-            Err((StatusCode::INTERNAL_SERVER_ERROR, error_msg))
+            tracing::error!("Failed to create 3D task: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
 }
@@ -201,4 +187,76 @@ async fn handler(mut multipart: Multipart) -> Json<serde_json::Value> {
     });
 
     Json(response)
+}
+
+// WebSocket 핸들러
+pub async fn ws_handler(
+    ws: WebSocketUpgrade,
+    Path(task_id): Path<String>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_socket(socket, task_id, state))
+}
+
+async fn handle_socket(
+    mut socket: WebSocket, 
+    task_id: String, 
+    state: AppState,
+    addr: SocketAddr
+) {
+    info!("WebSocket connected: {} - task: {}", addr, task_id);
+    
+    loop {
+        match state.meshy_client.get_task_status(&task_id).await {
+            Ok(status) => {
+                let status_json = match serde_json::to_string(&status) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        error!("Failed to serialize status: {}", e);
+                        break;
+                    }
+                };
+                
+                info!("Sending status update: {} - {}", status.status, status.progress.unwrap_or(0));
+                
+                if socket.send(Message::Text(status_json)).await.is_err() {
+                    info!("Client {} disconnected", addr);
+                    break;
+                }
+                
+                // 완료되면 연결 종료
+                if status.status == "SUCCEEDED" || status.status == "FAILED" {
+                    info!("Task {} finished: {}", task_id, status.status);
+                    let _ = socket.close().await;
+                    break;
+                }
+                
+                // 5초 대기
+                sleep(Duration::from_secs(5)).await;
+            }
+            Err(e) => {
+                error!("Failed to get task status: {}", e);
+                let error_msg = json!({
+                    "error": "Failed to get status",
+                    "details": e.to_string()
+                }).to_string();
+                let _ = socket.send(Message::Text(error_msg)).await;
+                break;
+            }
+        }
+    }
+    
+    info!("WebSocket closed: {}", addr);
+}
+
+// Router 설정
+pub fn create_router() -> Router {
+    let state = AppState {
+        meshy_client: Arc::new(MeshyClient::new()),
+    };
+    
+    Router::new()
+        .route("/api/3d/create", post(create_3d_handler))
+        .route("/api/3d/ws/:task_id", get(ws_handler))
+        .with_state(state)
 }
