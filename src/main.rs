@@ -9,11 +9,7 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use reqwest::Client;
-use core::error;
 use std::time::Duration;
-use tokio::time::sleep;
-
-use aws_config::imds::client;
 
 use axum::{
     Router, 
@@ -23,11 +19,14 @@ use axum::{
     routing::{get, post}
 };
 
+use futures::sink::SinkExt;
+
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
+use tokio::time::sleep;
 
 use std::{net::SocketAddr, sync::Arc};
-use tracing::{info, Level};
+use tracing::{info, error, Level};
 use tracing_subscriber;
 use tower_http::cors::{CorsLayer, Any};
 use dotenv::dotenv;
@@ -49,7 +48,7 @@ async fn main() {
         .with_max_level(Level::INFO)
         .init();
 
-    // API 키 확인 (선택사항)
+    // API 키 확인
     match std::env::var("GEMINI_API_KEY") {
         Ok(_) => info!("GEMINI_API_KEY loaded successfully"),
         Err(_) => panic!("GEMINI_API_KEY not found in environment"),
@@ -61,14 +60,17 @@ async fn main() {
     }
 
     let cors = CorsLayer::new()
-        .allow_origin(Any)  // should modify for production
+        .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
+
+    let meshy_client = Arc::new(MeshyClient::new());
 
     let app = Router::new()
         .route("/test", post(test))
         .route("/gen_image", post(generate_image))
         .route("/", post(handler))
+        .merge(create_router(meshy_client))
         .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
@@ -95,7 +97,6 @@ async fn test(mut multipart: Multipart) -> Result<Json<serde_json::Value>, Statu
         
         let data = field.bytes().await.unwrap();
         
-        // 파일 저장
         let filepath = format!("./uploads/{}", filename);
         let mut file = File::create(&filepath).await.unwrap();
         file.write_all(&data).await.unwrap();
@@ -112,7 +113,6 @@ async fn test(mut multipart: Multipart) -> Result<Json<serde_json::Value>, Statu
     Ok(Json(response))
 }
 
-// 새로운 이미지 생성 엔드포인트
 async fn generate_image(mut multipart: Multipart) -> Result<Response, (StatusCode, String)> {
     info!("Received image generation request");
     
@@ -124,7 +124,6 @@ async fn generate_image(mut multipart: Multipart) -> Result<Response, (StatusCod
         The image should look like a professional product photograph."
     );
     
-    // multipart 데이터 파싱
     while let Some(field) = multipart.next_field().await
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read field: {}", e)))? 
     {
@@ -146,12 +145,10 @@ async fn generate_image(mut multipart: Multipart) -> Result<Response, (StatusCod
 
     let gemini_client = GeminiClient::new();
 
-    // Gemini API 호출
     match gemini_client.gen_image_nanobanana(prompt, images).await {
         Ok(result_image) => {
             info!("Successfully generated image: {} bytes", result_image.len());
             
-            // 이미지를 PNG로 반환
             Ok(Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, "image/png")
@@ -168,14 +165,13 @@ async fn generate_image(mut multipart: Multipart) -> Result<Response, (StatusCod
 
 pub async fn create_3d_handler(
     State(state): State<AppState>,
-    // 실제로는 Multipart로 이미지 받기
 ) -> Result<Json<TaskCreatedResponse>, StatusCode> {
-    let images: Vec<Bytes> = vec![]; // 실제 구현 필요
+    let images: Vec<Bytes> = vec![];
     
     match state.meshy_client.create_3d_task(images).await {
         Ok(task_id) => Ok(Json(TaskCreatedResponse { task_id })),
         Err(e) => {
-            tracing::error!("Failed to create 3D task: {}", e);
+            error!("Failed to create 3D task: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -202,9 +198,8 @@ async fn handle_socket(
     mut socket: WebSocket, 
     task_id: String, 
     state: AppState,
-    addr: SocketAddr
 ) {
-    info!("WebSocket connected: {} - task: {}", addr, task_id);
+    info!("WebSocket connected - task: {}", task_id);
     
     loop {
         match state.meshy_client.get_task_status(&task_id).await {
@@ -217,21 +212,24 @@ async fn handle_socket(
                     }
                 };
                 
-                info!("Sending status update: {} - {}", status.status, status.progress.unwrap_or(0));
+                info!("Sending status update: {} - progress: {}", 
+                    status.status, 
+                    status.progress.unwrap_or(0)
+                );
                 
-                if socket.send(Message::Text(status_json)).await.is_err() {
-                    info!("Client {} disconnected", addr);
+                if socket.send(Message::Text(status_json.into())).await.is_err() {
+                    info!("Client disconnected");
                     break;
                 }
                 
-                // 완료되면 연결 종료
+                // Check if task completed
                 if status.status == "SUCCEEDED" || status.status == "FAILED" {
-                    info!("Task {} finished: {}", task_id, status.status);
+                    info!("Task {} finished with status: {}", task_id, status.status);
                     let _ = socket.close().await;
                     break;
                 }
                 
-                // 5초 대기
+                // Poll every 5 seconds
                 sleep(Duration::from_secs(5)).await;
             }
             Err(e) => {
@@ -240,23 +238,26 @@ async fn handle_socket(
                     "error": "Failed to get status",
                     "details": e.to_string()
                 }).to_string();
-                let _ = socket.send(Message::Text(error_msg)).await;
+                
+                if socket.send(Message::Text(error_msg.into())).await.is_err() {
+                    break;
+                }
                 break;
             }
         }
     }
     
-    info!("WebSocket closed: {}", addr);
+    info!("WebSocket closed for task: {}", task_id);
 }
 
-// Router 설정
-pub fn create_router() -> Router {
+// Router configuration with proper state management
+pub fn create_router(meshy_client: Arc<MeshyClient>) -> Router {
     let state = AppState {
-        meshy_client: Arc::new(MeshyClient::new()),
+        meshy_client,
     };
     
     Router::new()
         .route("/api/3d/create", post(create_3d_handler))
-        .route("/api/3d/ws/:task_id", get(ws_handler))
+        .route("/api/3d/ws/{task_id}", get(ws_handler))
         .with_state(state)
 }

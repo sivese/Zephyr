@@ -4,11 +4,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::info;
 use reqwest::Client;
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    Json,
-};
 
 #[derive(Debug, Serialize)]
 pub struct TaskCreatedResponse {
@@ -17,10 +12,10 @@ pub struct TaskCreatedResponse {
 
 #[derive(Debug, Serialize)]
 pub struct TaskStatusResponse {
-    id: String,
-    status: String,
-    progress: Option<i32>,
-    model_url: Option<String>,
+    pub id: String,
+    pub status: String,
+    pub progress: Option<i32>,
+    pub model_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,7 +62,7 @@ impl MeshyClient {
     pub async fn create_3d_task(
         &self,
         images: Vec<Bytes>
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let request_url = format!("{}/v2/image-to-3d", Self::MESHY_API_BASE);
         
         let mut image_urls = Vec::new();
@@ -117,7 +112,7 @@ impl MeshyClient {
     pub async fn get_task_status(
         &self,
         task_id: &str
-    ) -> Result<TaskStatusResponse, Box<dyn std::error::Error>> {
+    ) -> Result<TaskStatusResponse, Box<dyn std::error::Error + Send + Sync>> {
         let status_url = format!("{}/v2/image-to-3d/{}", Self::MESHY_API_BASE, task_id);
         
         let response = self.client
