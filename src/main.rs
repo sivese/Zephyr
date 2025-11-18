@@ -165,8 +165,29 @@ async fn generate_image(mut multipart: Multipart) -> Result<Response, (StatusCod
 
 pub async fn create_3d_handler(
     State(state): State<AppState>,
+    mut multipart: Multipart,
 ) -> Result<Json<TaskCreatedResponse>, StatusCode> {
-    let images: Vec<Bytes> = vec![];
+    info!("Received 3D creation request");
+    
+    let mut images: Vec<Bytes> = Vec::new();
+    
+    // multipart에서 이미지 추출
+    while let Some(field) = multipart.next_field().await.unwrap() {
+        let name = field.name().unwrap_or("unknown").to_string();
+        info!("Processing field: {}", name);
+        
+        if name.starts_with("image") || name == "file" {
+            let data = field.bytes().await
+                .map_err(|_| StatusCode::BAD_REQUEST)?;
+            info!("Received image field '{}': {} bytes", name, data.len());
+            images.push(data);
+        }
+    }
+    
+    if images.is_empty() {
+        info!("No images received");
+        return Err(StatusCode::BAD_REQUEST);
+    }
     
     match state.meshy_client.create_3d_task(images).await {
         Ok(task_id) => Ok(Json(TaskCreatedResponse { task_id })),

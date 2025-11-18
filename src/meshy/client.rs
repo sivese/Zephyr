@@ -63,31 +63,29 @@ impl MeshyClient {
         &self,
         images: Vec<Bytes>
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        let request_url = format!("{}/v2/image-to-3d", Self::MESHY_API_BASE);
+        let request_url = format!("{}/openapi/v1/image-to-3d", Self::MESHY_API_BASE);
         
-        let mut image_urls = Vec::new();
-        
-        for (idx, image_bytes) in images.iter().enumerate() {
-            info!("Processing image {}: {} bytes", idx, image_bytes.len());
-            
-            let mime_type = if image_bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
-                "image/jpeg"
-            } else if image_bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
-                "image/png"
-            } else if image_bytes.starts_with(&[0x47, 0x49, 0x46]) {
-                "image/gif"
-            } else if image_bytes.starts_with(&[0x52, 0x49, 0x46, 0x46]) {
-                "image/webp"
-            } else {
-                "image/jpeg"
-            };
-            
-            let img_base64 = general_purpose::STANDARD.encode(&image_bytes);
-            image_urls.push(format!("data:{};base64,{}", mime_type, img_base64));
+        // 첫 번째 이미지만 사용
+        if images.is_empty() {
+            return Err("No images provided".into());
         }
         
+        let image_bytes = &images[0];
+        info!("Processing image: {} bytes", image_bytes.len());
+        
+        let mime_type = if image_bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+            "image/jpeg"
+        } else if image_bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
+            "image/png"
+        } else {
+            "image/jpeg"
+        };
+        
+        let img_base64 = general_purpose::STANDARD.encode(&image_bytes);
+        let image_url = format!("data:{};base64,{}", mime_type, img_base64);
+        
         let payload = json!({
-            "image_urls": image_urls,
+            "image_url": image_url,  // ✅ 단수형
             "enable_pbr": true,
             "should_remesh": true,
         });
@@ -113,7 +111,7 @@ impl MeshyClient {
         &self,
         task_id: &str
     ) -> Result<TaskStatusResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let status_url = format!("{}/v2/image-to-3d/{}", Self::MESHY_API_BASE, task_id);
+        let status_url = format!("{}/openapi/v1/image-to-3d/{}", Self::MESHY_API_BASE, task_id);
         
         let response = self.client
             .get(&status_url)
