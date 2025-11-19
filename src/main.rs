@@ -8,15 +8,16 @@ use base64::{Engine, engine::general_purpose};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use reqwest::Client;
 use std::time::Duration;
 
+use reqwest::Client;
 use axum::{
     Router, 
     extract::{ConnectInfo, Multipart, Request, Path, ws::{Message, WebSocket, WebSocketUpgrade}, State}, 
     http::{StatusCode, header}, 
     response::{IntoResponse, Json, Response}, 
-    routing::{get, post}
+    routing::{get, post},
+    body::Body
 };
 
 use futures::sink::SinkExt;
@@ -280,5 +281,59 @@ pub fn create_router(meshy_client: Arc<MeshyClient>) -> Router {
     Router::new()
         .route("/api/3d/create", post(create_3d_handler))
         .route("/api/3d/ws/{task_id}", get(ws_handler))
+        .route("/api/3d/model/{task_id}", get(proxy_model_handler))  // 새 라우트
         .with_state(state)
+}
+
+pub async fn proxy_model_handler(
+    Path(task_id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Response, StatusCode> {
+    info!("Proxying 3D model for task: {}", task_id);
+    
+    match state.meshy_client.get_task_status(&task_id).await {
+        Ok(status) => {
+            if let Some(model_url) = status.model_url {
+                info!("Fetching model from: {}", model_url);
+                
+                let client = Client::new();
+                match client.get(&model_url).send().await {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            match response.bytes().await {
+                                Ok(bytes) => {
+                                    info!("Successfully fetched model: {} bytes", bytes.len());
+                                    
+                                    Ok(Response::builder()
+                                        .status(StatusCode::OK)
+                                        .header(header::CONTENT_TYPE, "model/gltf-binary")
+                                        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                                        .body(Body::from(bytes))
+                                        .unwrap())
+                                }
+                                Err(e) => {
+                                    error!("Failed to read model bytes: {}", e);
+                                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                                }
+                            }
+                        } else {
+                            error!("Failed to fetch model: {}", response.status());
+                            Err(StatusCode::BAD_GATEWAY)
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to download model: {}", e);
+                        Err(StatusCode::BAD_GATEWAY)
+                    }
+                }
+            } else {
+                error!("No model URL available for task: {}", task_id);
+                Err(StatusCode::NOT_FOUND)
+            }
+        }
+        Err(e) => {
+            error!("Failed to get task status: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
