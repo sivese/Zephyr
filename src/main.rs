@@ -306,7 +306,11 @@ pub async fn proxy_model_handler(
                                     
                                     Ok(Response::builder()
                                         .status(StatusCode::OK)
-                                        .header(header::CONTENT_TYPE, "model/gltf-binary")
+                                        .header(header::CONTENT_TYPE, "application/octet-stream")
+                                        .header(
+                                            header::CONTENT_DISPOSITION,
+                                            format!("attachment; filename=\"motorcycle-3d-{}.glb\"", task_id)
+                                        )
                                         .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                                         .body(Body::from(bytes))
                                         .unwrap())
