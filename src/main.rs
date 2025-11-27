@@ -70,6 +70,10 @@ async fn main() {
     let app = Router::new()
         .route("/test", post(test))
         .route("/gen_image", post(generate_image))
+        // Consider to integrate these three into one with different prompts
+        .route("/extract_exhaust", post(extract_exhaust_image))
+        .route("/extract_seat", post(extract_seat_image))
+        .route("/extract_frame", post(extract_frame_image))
         .route("/", post(handler))
         .merge(create_router(meshy_client))
         .layer(cors);
@@ -147,6 +151,153 @@ async fn generate_image(mut multipart: Multipart) -> Result<Response, (StatusCod
     let gemini_client = GeminiClient::new();
 
     match gemini_client.gen_image_nanobanana(prompt, images).await {
+        Ok(result_image) => {
+            info!("Successfully generated image: {} bytes", result_image.len());
+            
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "image/png")
+                .body(axum::body::Body::from(result_image))
+                .unwrap())
+        }
+        Err(e) => {
+            let error_msg = format!("Failed to generate image: {}", e);
+            info!("{}", error_msg);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, error_msg))
+        }
+    }
+}
+
+async fn extract_exhaust_image(
+    mut multipart: Multipart,
+) -> Result<Response, (StatusCode, String)> {
+    let prompt = String::from("
+        Extract only the muffler and exhaust pipe from this motorcycle image. 
+        Show the exhaust system as an isolated part on a clean white background. 
+        Remove the motorcycle body and all other components.
+    ");
+
+    let mut img = Bytes::new();
+
+    while let Some(field) = multipart.next_field().await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read field: {}", e)))? 
+    {
+        let name = field.name().unwrap_or("unknown").to_string();
+
+        if name == "frame_image" {
+            img = field.bytes().await
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read bytes: {}", e)))?;
+
+            info!("Extracted frame image: {} bytes", img.len());
+        }
+    }
+
+    if img.is_empty() {
+        info!("No images received");
+        return Err((StatusCode::BAD_REQUEST, "No images provided".to_string()));
+    }
+
+    let gemini_client = GeminiClient::new();
+
+    match gemini_client.extract_image_nanobanana(prompt, img).await {
+        Ok(result_image) => {
+            info!("Successfully generated image: {} bytes", result_image.len());
+            
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "image/png")
+                .body(axum::body::Body::from(result_image))
+                .unwrap())
+        }
+        Err(e) => {
+            let error_msg = format!("Failed to generate image: {}", e);
+            info!("{}", error_msg);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, error_msg))
+        }
+    }
+}
+
+async fn extract_seat_image(
+    mut multipart: Multipart,
+) -> Result<Response, (StatusCode, String)> {
+    let prompt = String::from("
+        Extract only the seat (saddle) from this motorcycle image.
+        Show the seat as an isolated part on a clean white background.
+        Remove the motorcycle body and all other components.
+    ");
+
+    let mut img = Bytes::new();
+
+    while let Some(field) = multipart.next_field().await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read field: {}", e)))? 
+    {
+        let name = field.name().unwrap_or("unknown").to_string();
+
+        if name == "frame_image" {
+            img = field.bytes().await
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read bytes: {}", e)))?;
+
+            info!("Extracted frame image: {} bytes", img.len());
+        }
+    }
+
+    if img.is_empty() {
+        info!("No images received");
+        return Err((StatusCode::BAD_REQUEST, "No images provided".to_string()));
+    }
+
+    let gemini_client = GeminiClient::new();
+
+    match gemini_client.extract_image_nanobanana(prompt, img).await {
+        Ok(result_image) => {
+            info!("Successfully generated image: {} bytes", result_image.len());
+            
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "image/png")
+                .body(axum::body::Body::from(result_image))
+                .unwrap())
+        }
+        Err(e) => {
+            let error_msg = format!("Failed to generate image: {}", e);
+            info!("{}", error_msg);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, error_msg))
+        }
+    }
+}
+
+async fn extract_frame_image(
+    mut multipart: Multipart,
+) -> Result<Response, (StatusCode, String)> {
+    let prompt = String::from("
+        Remove the exhaust pipe, muffler, and seat from the motorcycle. 
+        Show only the bare frame and engine where these parts were located. 
+        Keep the rest of the motorcycle intact and unchanged. Clean, realistic result.
+    ");
+
+    let mut img = Bytes::new();
+
+    while let Some(field) = multipart.next_field().await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read field: {}", e)))? 
+    {
+        let name = field.name().unwrap_or("unknown").to_string();
+
+        if name == "frame_image" {
+            img = field.bytes().await
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read bytes: {}", e)))?;
+
+            info!("Extracted frame image: {} bytes", img.len());
+        }
+    }
+
+    if img.is_empty() {
+        info!("No images received");
+        return Err((StatusCode::BAD_REQUEST, "No images provided".to_string()));
+    }
+
+    let gemini_client = GeminiClient::new();
+
+    match gemini_client.extract_image_nanobanana(prompt, img).await {
         Ok(result_image) => {
             info!("Successfully generated image: {} bytes", result_image.len());
             
