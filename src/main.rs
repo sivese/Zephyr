@@ -184,7 +184,7 @@ async fn extract_exhaust_image(
     {
         let name = field.name().unwrap_or("unknown").to_string();
 
-        if name == "frame_image" {
+        if name == "image_motorcycle" {
             img = field.bytes().await
                 .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read bytes: {}", e)))?;
 
@@ -233,7 +233,7 @@ async fn extract_seat_image(
     {
         let name = field.name().unwrap_or("unknown").to_string();
 
-        if name == "frame_image" {
+        if name == "image_motorcycle" {
             img = field.bytes().await
                 .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read bytes: {}", e)))?;
 
@@ -282,7 +282,7 @@ async fn extract_frame_image(
     {
         let name = field.name().unwrap_or("unknown").to_string();
 
-        if name == "frame_image" {
+        if name == "image_motorcycle" {
             img = field.bytes().await
                 .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read bytes: {}", e)))?;
 
